@@ -282,7 +282,7 @@ def part1(params):
         'Expert_AvgReturn': expert_means, 
         'Expert_AvgStdReturn': expert_sds, 
         'Eval_AvgReturn': eval_means, 
-        'Eval_AvgStdReturn': expert_sds,
+        'Eval_AvgStdReturn': eval_sds,
         'Tasks': names
     }).to_csv('cs285/tables/AllTasks.csv')
 
@@ -387,10 +387,6 @@ def run(createTable=False):
 
     # convert args to dictionary
     params = vars(args)
-
-    
-
-    
 
     ###################
     ### RUN TRAINING
