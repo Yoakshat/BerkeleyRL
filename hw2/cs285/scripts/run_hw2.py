@@ -6,9 +6,17 @@ from cs285.agents.pg_agent import PGAgent
 import os
 import time
 
-import gym
 import numpy as np
 import torch
+import gym
+
+# numpy version: 1.25.2
+print("Numpy version: " + np.__version__)
+# gym version: 1.00
+print("Gym version: " + gym.__version__)
+# torch version: 2.2.0+cu121
+print("Torch version:: " + torch.__version__)
+
 from cs285.infrastructure import pytorch_util as ptu
 
 from cs285.infrastructure import utils
@@ -81,8 +89,7 @@ def run_training_loop(args):
 
         # TODO: train the agent using the sampled trajectories and the agent's update function
         print("\n** UPDATING AGENT **\n")
-        agent.update(trajs_dict["observation"], trajs_dict["action"], trajs_dict["reward"], trajs_dict["terminal"])
-        train_info: dict = None
+        train_info: dict = agent.update(trajs_dict["observation"], trajs_dict["action"], trajs_dict["reward"], trajs_dict["terminal"])
 
         if itr % args.scalar_log_freq == 0:
             # save eval metrics

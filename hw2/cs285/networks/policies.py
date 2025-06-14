@@ -60,22 +60,23 @@ class MLPPolicy(nn.Module):
         """Takes a single observation (as a numpy array) and returns a single action (as a numpy array)."""
         # TODO: implement get_action
         action = self.forward(obs).sample(); 
-        return action
+        return ptu.to_numpy(action)
 
+    # dimension should be (batch size, observation size)
     def forward(self, obs: torch.FloatTensor):
         """
         This function defines the forward pass of the network.  You can return anything you want, but you should be
         able to differentiate through it. For example, you can return a torch.FloatTensor. You can also return more
         flexible objects, such as a `torch.distributions.Distribution` object. It's up to you!
         """
-
-        assert obs.ndim == 1, "SHOULD NOT HAVE MORE THAN 1 DIMENSION"
+        # print(obs.shape)
+        assert obs.ndim <= 2, "SHOULD NOT HAVE MORE THAN 2 DIMENSIONS"
 
         # dim = (# of samples)
         if self.discrete:
             # TODO: define the forward pass for a policy with a discrete action space.
             actions = self.logits_net(obs)
-            return distributions.Categorical(F.softmax(actions))
+            return distributions.Categorical(F.softmax(actions, dim=-1))
         else:
             # TODO: define the forward pass for a policy with a continuous action space.
             return distributions.Normal(self.mean_net(obs), torch.exp(self.logstd))
@@ -102,8 +103,8 @@ class MLPPolicyPG(MLPPolicy):
 
         # TODO: implement the policy gradient actor update.
         dist = self.forward(obs)
-        # divide by the # of trajectories? 
-        loss = -1 * torch.dot(dist.log_prob(actions), advantages)
+        # divide by the # of total timesteps
+        loss = -torch.mean(dist.log_prob(actions) * advantages)
 
         self.optimizer.zero_grad(); 
         loss.backward(); 

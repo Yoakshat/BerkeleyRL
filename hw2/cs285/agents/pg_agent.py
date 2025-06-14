@@ -47,6 +47,11 @@ class PGAgent(nn.Module):
         self.gae_lambda = gae_lambda
         self.normalize_advantages = normalize_advantages
 
+    # sampling trajectory from pg_agent
+    # get action from agent
+    def get_action(self, obs: np.ndarray) -> np.ndarray:
+        return self.actor.get_action(obs)
+
     def update(
         self,
         obs: Sequence[np.ndarray],
@@ -61,13 +66,19 @@ class PGAgent(nn.Module):
         total number of samples across all trajectories (i.e. the sum of the lengths of all the arrays).
         """
 
+
+
         # step 1: calculate Q values of each (s_t, a_t) point, using rewards (r_0, ..., r_t, ..., r_T)
+        # sequence of trajectories
         q_values: Sequence[np.ndarray] = self._calculate_q_vals(rewards)
 
         # TODO: flatten the lists of arrays into single arrays, so that the rest of the code can be written in a vectorized
         # way. obs, actions, rewards, terminals, and q_values should all be arrays with a leading dimension of `batch_size`
         # beyond this point.
-        obs, actions, rewards, terminals, q_values = [l.flatten() for l in [obs, actions, rewards, terminals, q_values]]
+
+        # concatenate the sequences
+        obs, actions, rewards, terminals, q_values = (np.concatenate(l, axis=0) for l in (obs, actions, rewards, terminals, q_values))
+        print("Shape after flattening: " + str(rewards.shape))
 
         # step 2: calculate advantages from Q values
         # if no baseline, just q-values
@@ -77,10 +88,7 @@ class PGAgent(nn.Module):
 
         # step 3: use all datapoints (s_t, a_t, adv_t) to update the PG actor/policy
         # TODO: update the PG actor/policy network once using the advantages
-        
-        self.actor.update(obs, actions, advantages)
-
-        info: dict = None
+        info: dict = self.actor.update(obs, actions, advantages)
 
         # step 4: if needed, use all datapoints (s_t, a_t, q_t) to update the PG critic/baseline
         if self.critic is not None:
@@ -93,6 +101,7 @@ class PGAgent(nn.Module):
 
     def _calculate_q_vals(self, rewards: Sequence[np.ndarray]) -> Sequence[np.ndarray]:
         """Monte Carlo estimation of the Q function."""
+        q_values = [] 
 
         if not self.use_reward_to_go:
             # Case 1: in trajectory-based PG, we ignore the timestep and instead use the discounted return for the entire
@@ -100,15 +109,17 @@ class PGAgent(nn.Module):
             # In other words: Q(s_t, a_t) = sum_{t'=0}^T gamma^t' r_{t'}
             # TODO: use the helper function self._discounted_return to calculate the Q-values
 
-            # sums up all the rewards
-            q_values = self._discounted_return(rewards)
+            for rewForTraj in rewards: 
+                q_values.append(np.array(self._discounted_return(rewForTraj)))
+
         else:
             # Case 2: in reward-to-go PG, we only use the rewards after timestep t to estimate the Q-value for (s_t, a_t).
             # In other words: Q(s_t, a_t) = sum_{t'=t}^T gamma^(t'-t) * r_{t'}
             # TODO: use the helper function self._discounted_reward_to_go to calculate the Q-values
 
             # reward to-go
-            q_values = self._discounted_reward_to_go(rewards)
+            for rewForTraj in rewards: 
+                q_values.append(np.array(self._discounted_reward_to_go(rewForTraj)))
 
         return q_values
 
@@ -165,22 +176,18 @@ class PGAgent(nn.Module):
         Note that all entries of the output list should be the exact same because each sum is from 0 to T (and doesn't
         involve t)!
         """
-        
+
         sum = 0
-        for i in range(len(rewards)): 
-            sum += self.gamma**i * rewards[i]
+        for tstep in range(len(rewards)): 
+            sum += self.gamma**tstep * rewards[tstep]
 
         return [sum]*len(rewards)
-
-
+    
     def _discounted_reward_to_go(self, rewards: Sequence[float]) -> Sequence[float]:
         """
         Helper function which takes a list of rewards {r_0, r_1, ..., r_t', ... r_T} and returns a list where the entry
         in each index t' is sum_{t'=t}^T gamma^(t'-t) * r_{t'}.
         """
-
-        # sum from t and onwards, treat timestep we're on as the first index 
-
         discounted_returns = [] 
         for t in range(len(rewards)): 
             sum = 0
@@ -188,6 +195,7 @@ class PGAgent(nn.Module):
                 sum += self.gamma**(j - t) * rewards[j] 
 
             discounted_returns.append(sum)
-            
 
         return discounted_returns
+    
+        

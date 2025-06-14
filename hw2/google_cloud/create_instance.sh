@@ -2,7 +2,7 @@
 
 # Creates a new GPU instance, transfers the code to it, and runs some installation steps.
 
-export ZONE="us-west1-b"
+export ZONE="us-west1-a"
 export INSTANCE_NAME="cs285"
 
 echo "Creating instance..."
@@ -12,8 +12,8 @@ gcloud compute instances create $INSTANCE_NAME \
   --image-family=pytorch-2-2-cu121-debian-11-py310  \
   --image-project=deeplearning-platform-release \
   --maintenance-policy=TERMINATE \
-  --machine-type=n1-standard-4 \
-  --accelerator="type=nvidia-tesla-p100,count=1" \
+  --machine-type=g2-standard-4 \
+  --accelerator="type=nvidia-l4,count=1" \
   --metadata="install-nvidia-driver=True"
 
 echo "-------------------------------------"
