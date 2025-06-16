@@ -75,8 +75,7 @@ class MLPPolicy(nn.Module):
         # dim = (# of samples)
         if self.discrete:
             # TODO: define the forward pass for a policy with a discrete action space.
-            actions = self.logits_net(obs)
-            return distributions.Categorical(F.softmax(actions, dim=-1))
+            return distributions.Categorical(logits=self.logits_net(obs))
         else:
             # TODO: define the forward pass for a policy with a continuous action space.
             return distributions.Normal(self.mean_net(obs), torch.exp(self.logstd))
@@ -103,8 +102,17 @@ class MLPPolicyPG(MLPPolicy):
 
         # TODO: implement the policy gradient actor update.
         dist = self.forward(obs)
+
+        # log(probability of every action multiplied by each other) -> sum of logs
+        # assuming independence
+        logprobs = dist.log_prob(actions)
+        if(logprobs.ndim == 2): 
+            logprobs = logprobs.sum(dim=1)
+
+        assert logprobs.shape == advantages.shape, "Log Probs and Advantages Don't Match Same Shape"
+
         # divide by the # of total timesteps
-        loss = -torch.mean(dist.log_prob(actions) * advantages)
+        loss = -torch.mean(logprobs * advantages)
 
         self.optimizer.zero_grad(); 
         loss.backward(); 

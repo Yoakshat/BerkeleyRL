@@ -10,12 +10,9 @@ import numpy as np
 import torch
 import gym
 
-# numpy version: 1.25.2
 print("Numpy version: " + np.__version__)
-# gym version: 1.00
 print("Gym version: " + gym.__version__)
-# torch version: 2.2.0+cu121
-print("Torch version:: " + torch.__version__)
+print("Torch version: " + torch.__version__)
 
 from cs285.infrastructure import pytorch_util as ptu
 
@@ -29,7 +26,7 @@ MAX_NVIDEO = 2
 def run_training_loop(args):
     logger = Logger(args.logdir)
 
-    # set random seeds
+    # set random seed
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     ptu.init_gpu(use_gpu=not args.no_gpu, gpu_id=args.which_gpu)
@@ -74,6 +71,7 @@ def run_training_loop(args):
     total_envsteps = 0
     start_time = time.time()
 
+    
     for itr in range(args.n_iter):
         print(f"\n********** Iteration {itr} ************")
         # TODO: sample `args.batch_size` transitions using utils.sample_trajectories

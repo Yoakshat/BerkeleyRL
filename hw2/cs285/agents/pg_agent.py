@@ -66,8 +66,6 @@ class PGAgent(nn.Module):
         total number of samples across all trajectories (i.e. the sum of the lengths of all the arrays).
         """
 
-
-
         # step 1: calculate Q values of each (s_t, a_t) point, using rewards (r_0, ..., r_t, ..., r_T)
         # sequence of trajectories
         q_values: Sequence[np.ndarray] = self._calculate_q_vals(rewards)
@@ -93,9 +91,10 @@ class PGAgent(nn.Module):
         # step 4: if needed, use all datapoints (s_t, a_t, q_t) to update the PG critic/baseline
         if self.critic is not None:
             # TODO: perform `self.baseline_gradient_steps` updates to the critic/baseline network
-            critic_info: dict = None
+            for s in range(self.baseline_gradient_steps): 
+                critic_info: dict = self.critic.update(obs, q_values)
 
-            info.update(critic_info)
+                info.update(critic_info)
 
         return info
 
@@ -139,12 +138,13 @@ class PGAgent(nn.Module):
             advantages = q_values
         else:
             # TODO: run the critic and use it as a baseline
-            values = None
-            assert values.shape == q_values.shape
+            values = torch.squeeze(self.critic(ptu.from_numpy(obs)), dim=-1)
+            values = ptu.to_numpy(values.detach())
+            assert values.shape == q_values.shape, "Predictions dont match with actual q-values"
 
             if self.gae_lambda is None:
                 # TODO: if using a baseline, but not GAE, what are the advantages?
-                advantages = None
+                advantages = q_values - values
             else:
                 # TODO: implement GAE
                 batch_size = obs.shape[0]
@@ -154,17 +154,27 @@ class PGAgent(nn.Module):
                 advantages = np.zeros(batch_size + 1)
 
                 for i in reversed(range(batch_size)):
-                    # TODO: recursively compute advantage estimates starting from timestep T.
+                    # TODO: recursively compute advantage estimates starting from timestep T. (start from the end)
                     # HINT: use terminals to handle edge cases. terminals[i] is 1 if the state is the last in its
                     # trajectory, and 0 otherwise.
-                    pass
 
+                    # if you are the last one in your trajectory
+                    firstAdvantage = rewards[i] - values[i]
+                    advantages[i] = firstAdvantage
+
+                    # if not last one
+                    if(terminals[i] != 1): 
+                        firstAdvantage += self.gamma * values[i+1]
+                        advantages[i] = firstAdvantage + self.gamma * self.gae_lambda * advantages[i+1]
+                    
                 # remove dummy advantage
                 advantages = advantages[:-1]
 
         # TODO: normalize the advantages to have a mean of zero and a standard deviation of one within the batch
         if self.normalize_advantages:
-            advantages = (advantages - np.mean(advantages))/np.std(advantages)
+            # epsilon so we don't get any divide by 0 or NaNs
+            eps = 1e-8
+            advantages = (advantages - np.mean(advantages))/(np.std(advantages) + eps)
 
         return advantages
 
