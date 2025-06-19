@@ -38,7 +38,7 @@ def sample_trajectory(
 
         # during evaluation, it doesn't make much sense to explore
         # so set probability of exploration to 0
-        ac = policy.get_action(ob, epsilon=0)
+        ac = policy.get_action(ob)
 
         # TODO: take that action and get reward and next ob
         next_ob, rew, done, info = env.step(ac)
