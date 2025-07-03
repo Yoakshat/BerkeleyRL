@@ -2,6 +2,8 @@ import os
 import time
 
 from cs285.agents.pg_agent import PGAgent
+from cs285.a3c.worker import Worker
+from cs285.a3c.sharedAdam import SharedAdam
 
 import os
 import time
@@ -51,82 +53,105 @@ def run_training_loop(args):
     else:
         fps = env.env.metadata["render_fps"]
 
+    # list of kwargs
+    agent_kwargs = {
+        "ob_dim": ob_dim, 
+        "ac_dim": ac_dim, 
+        "discrete": discrete, 
+        "n_layers": args.n_layers,
+        "layer_size": args.layer_size,
+        "gamma": args.discount, # Note the renaming from args.discount to gamma
+        "learning_rate": args.learning_rate,
+        "use_baseline": args.use_baseline,
+        "use_reward_to_go": args.use_reward_to_go,
+        "normalize_advantages": args.normalize_advantages,
+        "baseline_learning_rate": args.baseline_learning_rate,
+        "baseline_gradient_steps": args.baseline_gradient_steps,
+        "gae_lambda": args.gae_lambda,
+    }
+
     # initialize agent
-    agent = PGAgent(
-        ob_dim,
-        ac_dim,
-        discrete,
-        n_layers=args.n_layers,
-        layer_size=args.layer_size,
-        gamma=args.discount,
-        learning_rate=args.learning_rate,
-        use_baseline=args.use_baseline,
-        use_reward_to_go=args.use_reward_to_go,
-        normalize_advantages=args.normalize_advantages,
-        baseline_learning_rate=args.baseline_learning_rate,
-        baseline_gradient_steps=args.baseline_gradient_steps,
-        gae_lambda=args.gae_lambda,
-    )
+    agent = PGAgent(**agent_kwargs)
 
-    total_envsteps = 0
-    start_time = time.time()
+    if args.num_workers > 1: 
+        print(f"Number of logical CPU cores: {os.cpu_count()}")
+        assert agent.critic is not None, "A3C requires both actor and critic"
 
-    
-    for itr in range(args.n_iter):
-        print(f"\n********** Iteration {itr} ************")
-        # TODO: sample `args.batch_size` transitions using utils.sample_trajectories
-        # make sure to use `max_ep_len`
+        # A3C implementation 
+        # TODO: log data
+        ga_net = agent.actor
+        gv_net = agent.critic
+        ga_net.share_memory()
+        gv_net.share_memory()
 
-        print("\n** SAMPLING TRAJECTORIES **\n")
-        trajs, envsteps_this_batch = utils.sample_trajectories(env, agent, args.batch_size, max_ep_len)
-        total_envsteps += envsteps_this_batch
+        gopt = SharedAdam(list(ga_net.parameters()) + list(gv_net.parameters()), lr=args.learning_rate)
+        # use A3C implementation
+        workers = [Worker(ga_net, gv_net, gopt, PGAgent(**agent_kwargs), env, args.batch_size, max_ep_len, args.n_iter)]
 
-        # trajs should be a list of dictionaries of NumPy arrays, where each dictionary corresponds to a trajectory.
-        # this line converts this into a single dictionary of lists of NumPy arrays.
-        trajs_dict = {k: [traj[k] for traj in trajs] for k in trajs[0]}
+        for w in workers: 
+            w.start()
 
-        # TODO: train the agent using the sampled trajectories and the agent's update function
-        print("\n** UPDATING AGENT **\n")
-        train_info: dict = agent.update(trajs_dict["observation"], trajs_dict["action"], trajs_dict["reward"], trajs_dict["terminal"])
+        for w in workers: 
+            w.join()
+    else: 
+        total_envsteps = 0
+        start_time = time.time()
 
-        if itr % args.scalar_log_freq == 0:
-            # save eval metrics
-            print("\nCollecting data for eval...")
-            eval_trajs, eval_envsteps_this_batch = utils.sample_trajectories(
-                env, agent.actor, args.eval_batch_size, max_ep_len
-            )
+        for itr in range(args.n_iter):
+            print(f"\n********** Iteration {itr} ************")
+            # TODO: sample `args.batch_size` transitions using utils.sample_trajectories
+            # make sure to use `max_ep_len`
 
-            logs = utils.compute_metrics(trajs, eval_trajs)
-            # compute additional metrics
-            logs.update(train_info)
-            logs["Train_EnvstepsSoFar"] = total_envsteps
-            logs["TimeSinceStart"] = time.time() - start_time
-            if itr == 0:
-                logs["Initial_DataCollection_AverageReturn"] = logs[
-                    "Train_AverageReturn"
-                ]
+            print("\n** SAMPLING TRAJECTORIES **\n")
+            trajs, envsteps_this_batch = utils.sample_trajectories(env, agent, args.batch_size, max_ep_len)
+            total_envsteps += envsteps_this_batch
 
-            # perform the logging
-            for key, value in logs.items():
-                print("{} : {}".format(key, value))
-                logger.log_scalar(value, key, itr)
-            print("Done logging...\n\n")
+            # trajs should be a list of dictionaries of NumPy arrays, where each dictionary corresponds to a trajectory.
+            # this line converts this into a single dictionary of lists of NumPy arrays.
+            trajs_dict = {k: [traj[k] for traj in trajs] for k in trajs[0]}
 
-            logger.flush()
+            # TODO: train the agent using the sampled trajectories and the agent's update function
+            print("\n** UPDATING AGENT **\n")
+            train_info: dict = agent.update(trajs_dict["observation"], trajs_dict["action"], trajs_dict["reward"], trajs_dict["terminal"])
 
-        if args.video_log_freq != -1 and itr % args.video_log_freq == 0:
-            print("\nCollecting video rollouts...")
-            eval_video_trajs = utils.sample_n_trajectories(
-                env, agent.actor, MAX_NVIDEO, max_ep_len, render=True
-            )
+            if itr % args.scalar_log_freq == 0:
+                # save eval metrics
+                print("\nCollecting data for eval...")
+                eval_trajs, eval_envsteps_this_batch = utils.sample_trajectories(
+                    env, agent.actor, args.eval_batch_size, max_ep_len
+                )
 
-            logger.log_trajs_as_videos(
-                eval_video_trajs,
-                itr,
-                fps=fps,
-                max_videos_to_save=MAX_NVIDEO,
-                video_title="eval_rollouts",
-            )
+                logs = utils.compute_metrics(trajs, eval_trajs)
+                # compute additional metrics
+                logs.update(train_info)
+                logs["Train_EnvstepsSoFar"] = total_envsteps
+                logs["TimeSinceStart"] = time.time() - start_time
+                if itr == 0:
+                    logs["Initial_DataCollection_AverageReturn"] = logs[
+                        "Train_AverageReturn"
+                    ]
+
+                # perform the logging
+                for key, value in logs.items():
+                    print("{} : {}".format(key, value))
+                    logger.log_scalar(value, key, itr)
+                print("Done logging...\n\n")
+
+                logger.flush()
+
+            if args.video_log_freq != -1 and itr % args.video_log_freq == 0:
+                print("\nCollecting video rollouts...")
+                eval_video_trajs = utils.sample_n_trajectories(
+                    env, agent.actor, MAX_NVIDEO, max_ep_len, render=True
+                )
+
+                logger.log_trajs_as_videos(
+                    eval_video_trajs,
+                    itr,
+                    fps=fps,
+                    max_videos_to_save=MAX_NVIDEO,
+                    video_title="eval_rollouts",
+                )
 
 
 def main():
@@ -165,6 +190,8 @@ def main():
     parser.add_argument("--scalar_log_freq", type=int, default=1)
 
     parser.add_argument("--action_noise_std", type=float, default=0)
+    # if more than 1 use a3c implementation
+    parser.add_argument("--num_workers", type=int, default=1)
 
     args = parser.parse_args()
 

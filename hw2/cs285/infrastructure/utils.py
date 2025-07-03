@@ -6,6 +6,7 @@ import gym
 import cv2
 from cs285.infrastructure import pytorch_util as ptu
 from typing import Dict, Tuple, List
+import multiprocessing
 
 ############################################
 ############################################
@@ -62,23 +63,23 @@ def sample_trajectory(
     }
 
 
+# sample trajectories in parallel
 def sample_trajectories(
     env: gym.Env,
     policy: MLPPolicy,
     min_timesteps_per_batch: int,
     max_length: int,
     render: bool = False,
+    parallel_actors: int = 4
 ) -> Tuple[List[Dict[str, np.ndarray]], int]:
     """Collect rollouts using policy until we have collected min_timesteps_per_batch steps."""
     timesteps_this_batch = 0
     trajs = []
     while timesteps_this_batch < min_timesteps_per_batch:
-        # collect rollout
         traj = sample_trajectory(env, policy, max_length, render)
-        trajs.append(traj)
-
-        # count steps
         timesteps_this_batch += get_traj_length(traj)
+        trajs.append(traj)
+        
     return trajs, timesteps_this_batch
 
 

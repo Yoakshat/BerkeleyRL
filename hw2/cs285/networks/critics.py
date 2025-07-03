@@ -37,8 +37,12 @@ class ValueCritic(nn.Module):
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         # TODO: implement the forward pass of the critic network
         return self.network(obs)
+    
+    def syncGradients(self, gnet): 
+        for lp, gp in zip(self.parameters(), gnet.parameters()): 
+            gp.grad = lp.grad
 
-    def update(self, obs: np.ndarray, q_values: np.ndarray) -> dict:
+    def update(self, obs: np.ndarray, q_values: np.ndarray, nostep=False) -> dict:
         obs = ptu.from_numpy(obs)
         q_values = ptu.from_numpy(q_values)
 
@@ -47,7 +51,9 @@ class ValueCritic(nn.Module):
 
         self.optimizer.zero_grad()
         loss.backward() 
-        self.optimizer.step()
+
+        if not nostep: 
+            self.optimizer.step()
 
         return {
             "Baseline Loss": ptu.to_numpy(loss),

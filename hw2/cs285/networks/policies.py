@@ -80,6 +80,11 @@ class MLPPolicy(nn.Module):
             # TODO: define the forward pass for a policy with a continuous action space.
             return distributions.Normal(self.mean_net(obs), torch.exp(self.logstd))
         return None
+    
+    # for A3C
+    def syncGradients(self, gnet): 
+        for lp, gp in zip(self.parameters(), gnet.parameters()): 
+            gp.grad = lp.grad
 
     def update(self, obs: np.ndarray, actions: np.ndarray, *args, **kwargs) -> dict:
         """Performs one iteration of gradient descent on the provided batch of data."""
@@ -94,6 +99,7 @@ class MLPPolicyPG(MLPPolicy):
         obs: np.ndarray,
         actions: np.ndarray,
         advantages: np.ndarray,
+        nostep: bool = False
     ) -> dict:
         """Implements the policy gradient actor update."""
         obs = ptu.from_numpy(obs)
@@ -104,7 +110,6 @@ class MLPPolicyPG(MLPPolicy):
         dist = self.forward(obs)
 
         # log(probability of every action multiplied by each other) -> sum of logs
-        # assuming independence
         logprobs = dist.log_prob(actions)
         if(logprobs.ndim == 2): 
             logprobs = logprobs.sum(dim=1)
@@ -116,7 +121,10 @@ class MLPPolicyPG(MLPPolicy):
 
         self.optimizer.zero_grad(); 
         loss.backward(); 
-        self.optimizer.step(); 
+        
+        # in the case of A3C, don't step yet
+        if not nostep: 
+            self.optimizer.step(); 
 
         return {
             "Actor Loss": ptu.to_numpy(loss),

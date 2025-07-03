@@ -47,6 +47,7 @@ class PGAgent(nn.Module):
         self.gae_lambda = gae_lambda
         self.normalize_advantages = normalize_advantages
 
+
     # sampling trajectory from pg_agent
     # get action from agent
     def get_action(self, obs: np.ndarray) -> np.ndarray:
@@ -58,6 +59,7 @@ class PGAgent(nn.Module):
         actions: Sequence[np.ndarray],
         rewards: Sequence[np.ndarray],
         terminals: Sequence[np.ndarray],
+        nostep: bool = False
     ) -> dict:
         """The train step for PG involves updating its actor using the given observations/actions and the calculated
         qvals/advantages that come from the seen rewards.
@@ -86,13 +88,13 @@ class PGAgent(nn.Module):
 
         # step 3: use all datapoints (s_t, a_t, adv_t) to update the PG actor/policy
         # TODO: update the PG actor/policy network once using the advantages
-        info: dict = self.actor.update(obs, actions, advantages)
+        info: dict = self.actor.update(obs, actions, advantages, nostep=nostep)
 
         # step 4: if needed, use all datapoints (s_t, a_t, q_t) to update the PG critic/baseline
         if self.critic is not None:
             # TODO: perform `self.baseline_gradient_steps` updates to the critic/baseline network
             for s in range(self.baseline_gradient_steps): 
-                critic_info: dict = self.critic.update(obs, q_values)
+                critic_info: dict = self.critic.update(obs, q_values, nostep=nostep)
 
                 info.update(critic_info)
 
@@ -208,4 +210,13 @@ class PGAgent(nn.Module):
 
         return discounted_returns
     
+    # push gradients to global network
+    def syncGradients(self, gaNet, gvNet): 
+        self.actor.syncGradients(gaNet)
+        self.critic.syncGradients(gvNet)
+
+    # pull gradients from global network
+    def reload(self, gaNet, gvNet): 
+        self.actor.load_state_dict(gaNet.state_dict())
+        self.critic.load_state_dict(gvNet.state_dict())
         
