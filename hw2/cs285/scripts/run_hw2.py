@@ -86,7 +86,7 @@ def run_training_loop(args):
 
         gopt = SharedAdam(list(ga_net.parameters()) + list(gv_net.parameters()), lr=args.learning_rate)
         # use A3C implementation
-        workers = [Worker(ga_net, gv_net, gopt, PGAgent(**agent_kwargs), env, args.batch_size, max_ep_len, args.n_iter)]
+        workers = [Worker(ga_net, gv_net, gopt, PGAgent(**agent_kwargs), env, args.batch_size, max_ep_len, args.n_iter) for _ in range(args.num_workers)]
 
         for w in workers: 
             w.start()
