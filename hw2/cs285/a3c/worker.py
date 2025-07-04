@@ -15,6 +15,8 @@ class Worker(mp.Process):
 
         # create a copy of the agent's actor + critic
         self.agent = agent
+        # initial sync 
+        self.agent.reload(self.ga_net, self.gv_net)
 
         self.batch_size = batch_size
         self.max_ep_len = max_ep_len
