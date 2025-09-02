@@ -1,1 +1,1 @@
-My Log for the Berkeley RL Lectures. 
+My Log for the Berkeley RL Lectures by Sergey. 
